@@ -1,0 +1,185 @@
+"""
+ Copyright (c) 2022, salesforce.com, inc.
+ All rights reserved.
+ SPDX-License-Identifier: BSD-3-Clause
+ For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+"""
+
+import os
+import json
+from ast import literal_eval
+from PIL import Image
+
+from lavis.datasets.datasets.vqa_datasets import VQADataset, VQAEvalDataset
+
+from collections import OrderedDict
+
+
+class __DisplMixin:
+    def displ_item(self, index):
+        sample, ann = self.__getitem__(index), self.annotation[index]
+
+        return OrderedDict(
+            {
+                "file": ann["image"],
+                "question": ann["question"],
+                "question_id": ann["question_id"],
+                "answers": "; ".join(ann["answer"]),
+                "image": sample["image"],
+                "q_type": sample["q_type"],
+            }
+        )
+
+
+class COCOVQADataset(VQADataset, __DisplMixin):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths)
+        self.q_types = {
+            "path finding" : 0,
+            "counting" : 1,
+            "arithmetic" : 2,
+            "algebra" : 3,
+            "spatial" : 4,
+            "order" : 5,
+            "measuring" : 6,
+            "logic" : 7,
+            "pattern" : 8,
+        }
+
+        # ocr_data = json.load(open("/mnt/data/dataset/wxy/SMART101-release-v1/ocr.json",'r'))
+        # self.img2ocr = {}
+        # for ocr in ocr_data:
+        #     file = ocr['file'].split('/')[1]
+        #     self.img2ocr[file] = ocr['ocr']
+
+    def __getitem__(self, index):
+        ann = self.annotation[index]
+        q_type = self.q_types.get(ann['qtype'],1)
+
+        image_path = ann["image"]
+        image = Image.open(image_path).convert("RGB")
+        # image = image.crop(ann['coord'])
+
+        image = self.vis_processor(image)
+        question = self.text_processor(ann["question"])
+
+        # file = image_path.split('/')[-1]
+        # ocr = literal_eval(self.img2ocr[file])
+        # if ocr:
+        #     ocr_text = ""
+        #     for o in ocr:
+        #         cord,text = o
+        #         t = f"{text[0]} is on {int(cord[0][0])},{int(cord[0][1])},{int(cord[2][0])},{int(cord[2][1])},"
+        #         ocr_text+=t
+        #     question = ocr_text+question
+
+        objs = ann['objs']
+        if objs:
+            obj_text = ""
+            for obj in objs:
+                clss,x1,y1,x2,y2 = obj
+                obj_text += f"{clss}[{x1},{y1},{x2},{y2}]"
+            question = obj_text+question
+
+        answer_weight = {}
+        for answer in ann["answer"]:
+            if answer in answer_weight.keys():
+                answer_weight[answer] += 1 / len(ann["answer"])
+            else:
+                answer_weight[answer] = 1 / len(ann["answer"])
+
+        answers = list(answer_weight.keys())
+        weights = list(answer_weight.values())
+
+        return {
+            "image": image,
+            "text_input": question,
+            "answers": answers,
+            "weights": weights,
+            "q_type": q_type
+        }
+
+
+class COCOVQAEvalDataset(VQAEvalDataset, __DisplMixin):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
+        """
+        vis_root (string): Root directory of images (e.g. coco/images/)
+        ann_root (string): directory to store the annotation file
+        """
+        self.q_types = {
+            "path finding" : 0,
+            "counting" : 1,
+            "arithmetic" : 2,
+            "algebra" : 3,
+            "spatial" : 4,
+            "order" : 5,
+            "measuring" : 6,
+            "logic" : 7,
+            "pattern" : 8,
+        }
+        self.vis_root = vis_root
+
+        self.annotation = json.load(open("ckpts/test.json",'r'))
+
+        # ocr_data = json.load(open("/mnt/workspace/workgroup/jinmu/LAVIS/ocr.json",'r'))
+        # self.img2ocr = {}
+        # for ocr in ocr_data:
+        #     file = ocr['file'].split('/')[1]
+        #     self.img2ocr[file] = ocr['ocr']
+
+        answer_list_path = ann_paths[1]
+        if os.path.exists(answer_list_path):
+            self.answer_list = json.load(open(answer_list_path))
+        else:
+            self.answer_list = None
+
+        try:
+            self.coco_fmt_qust_file = ann_paths[2]
+            self.coco_fmt_anno_file = ann_paths[3]
+        except IndexError:
+            self.coco_fmt_qust_file = None
+            self.coco_fmt_anno_file = None
+
+        self.vis_processor = vis_processor
+        self.text_processor = text_processor
+
+        self._add_instance_ids()
+
+    def __getitem__(self, index):
+        ann = self.annotation[index]
+        q_type = self.q_types.get(ann['qtype'],1)
+
+        image_path = ann["image"]
+        image = Image.open(image_path).convert("RGB")
+        # image = image.crop(ann['coord'])
+
+        image = self.vis_processor(image)
+        question = self.text_processor(ann["question"])
+
+        # file = image_path.split('/')[-1]
+        # ocr = literal_eval(self.img2ocr[file])
+        # if ocr:
+        #     ocr_text = ""
+        #     for o in ocr:
+        #         cord,text = o
+        #         t = f"{text[0]} is on {int(cord[0][0])},{int(cord[0][1])},{int(cord[2][0])},{int(cord[2][1])},"
+        #         ocr_text+=t
+        #     question = ocr_text+question
+
+        objs = ann['objs']
+        if objs:
+            obj_text = ""
+            for obj in objs:
+                clss,x1,y1,x2,y2 = obj
+                obj_text += f"{clss}[{x1},{y1},{x2},{y2}]"
+            question = obj_text+question
+
+        return {
+            "image": image,
+            "text_input": question,
+            "question_id": ann["question_id"],
+            "instance_id": ann["instance_id"],
+            "answers": ann["answer"],
+            # "qinfo": ann['qinfo'],
+            "q_type": q_type
+        }

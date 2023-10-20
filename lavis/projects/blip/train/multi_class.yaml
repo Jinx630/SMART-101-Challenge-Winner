@@ -1,0 +1,59 @@
+ # Copyright (c) 2022, salesforce.com, inc.
+ # All rights reserved.
+ # SPDX-License-Identifier: BSD-3-Clause
+ # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
+model:
+  arch: blip_classification
+
+  use_distill: False
+  pretrained: /mnt/data/dataset/wxy/pretrained-weights/blip/model_base_capfilt_large.pth
+  max_txt_len: 100
+  num_classes: 9
+  model_type: base
+  load_finetuned: False
+
+datasets:
+  smart: # name of the dataset builder
+    vis_processor:
+        train:
+          name: "blip_image_train"
+          image_size: 384
+        eval:
+          name: "blip_image_eval"
+          image_size: 384
+    text_processor:
+        train:
+          name: "blip_caption"
+        eval:
+          name: "blip_caption"
+
+run:
+  task: multimodal_classification
+
+  lr_sched: "linear_warmup_cosine_lr"
+  init_lr: 5e-5
+  min_lr: 0
+  weight_decay: 0.05
+  max_epoch: 15
+
+  batch_size_train: 64
+  batch_size_eval: 128
+  num_workers: 8
+
+  seed: 42
+  output_dir: "output/BLIP/SMART"
+
+  amp: False
+  resume_ckpt_path: null
+
+  evaluate: False 
+  train_splits: ["train"]
+  valid_splits: ["val", "test"]
+  test_splits: ["test"]
+
+  # distribution-specific
+  device: "cuda"
+  world_size: 1
+  dist_url: "env://"
+  distributed: True

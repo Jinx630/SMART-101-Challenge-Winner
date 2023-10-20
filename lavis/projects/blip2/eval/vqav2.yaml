@@ -1,0 +1,62 @@
+ # Copyright (c) 2022, salesforce.com, inc.
+ # All rights reserved.
+ # SPDX-License-Identifier: BSD-3-Clause
+ # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
+# Overall Accuracy is: 63.13
+# Per Answer Type Accuracy is the following:
+# other : 52.90
+# yes/no : 84.28
+# number : 41.01
+
+model:
+  arch: blip2_t5_instruct
+  model_type: flant5xxl
+  use_grad_checkpoint: False
+  load_finetuned: True
+  finetuned: "ckpts/blip-2-xxl.pth"
+  load_pretrained: False
+  image_size: 480
+  t5_model: ckpts/flan-t5-xxl
+
+datasets:
+  coco_vqa: # name of the dataset builder
+    type: eval
+    vis_processor:
+        eval:
+          name: "blip_image_eval"
+          image_size: 480
+    text_processor:
+        eval:
+          name: "blip_question"
+          max_words: 512
+    # build_info:
+    #     images:
+    #         storage: '/export/share/datasets/vision/coco/images/'
+
+run:
+  task: vqa
+  # optimization-specific
+  batch_size_train: 16
+  batch_size_eval: 1
+  num_workers: 4
+
+  # inference-specific
+  max_len: 10
+  min_len: 1
+  num_beams: 5
+  num_ans_candidates: 16
+  inference_method: "generate"
+  prompt: "question: {}"
+
+  seed: 42
+  output_dir: "output/BLIP2/VQA"
+
+  evaluate: True
+  test_splits: ["val"]
+
+  # distribution-specific
+  device: "cuda"
+  world_size: 1
+  dist_url: "env://"
+  distributed: F
